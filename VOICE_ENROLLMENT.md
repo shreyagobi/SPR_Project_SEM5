@@ -32,7 +32,7 @@ Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)** in your browser (use `lo
 
 Yes — **you should record multiple clips for every digit (`0`–`9`)** (recommended: **10–15 clips per digit** if only one person is using it, or **5–10 clips per digit per teammate** if multiple people are enrolling).
 
-1. Enter **Your Name** (e.g., `vansh`, `alex`) so your clips are tagged under your name.
+1. Enter **Your Name** (e.g., `vanshika`, `alex`) so your clips are tagged under your name.
 2. Choose how you want to record multiple clips per digit:
    * **Option A — Round-robin (`Auto-advance 0 → 9` checked, default):** Click **Record Digit (Auto-Save)** once, then speak `0`, pause, `1`, pause, `2`... through `9`. After each clip saves, it automatically advances to the next digit and wraps `9 → 0` so you can do multiple rounds without touching the mouse.
    * **Option B — One digit at a time (uncheck `Auto-advance 0 → 9`):** Click a digit tile (e.g., `0`), click **Record Digit (Auto-Save)**, and say `"zero"` 10 times in a row with a brief pause between each. The tile counter updates live (`0 clips` → `10 clips`). Click **Stop & Save**, then click `1` and repeat.
@@ -51,7 +51,9 @@ Yes — **you should record multiple clips for every digit (`0`–`9`)** (recomm
 4. Click **Train All Models Now**.
    * All 5 digit models (`HMM (hmmlearn)`, `GMM (custom)`, `GMM (sklearn)`, `HMM (custom)`, `DTW (multi-template)`), per-digit rejection thresholds, and the optional GMM-UBM speaker verifier are saved to `./models/`, and test accuracy is displayed in the table.
 
-*(CLI alternative: `.venv\Scripts\python.exe train_all.py --owner <your_name>`)*
+*(CLI alternative: `.venv\Scripts\python.exe train_all.py --owner <your_name> [--cmvn]`)*
+
+**Which dataset is used for training?** Training reads from `my_train_records/` and `my_test_records/` if those folders exist locally. If they do not exist yet, it falls back to the shared dataset in `processed_train_records/` and `processed_test_records/` that is already in the repository. Once you have recorded your own clips, the team folders take over, so the shared dataset is no longer used. The GMM-UBM speaker verifier also takes its background (impostor) data from `processed_train_records/`, and its enrolled speaker from `my_records/<owner>/`.
 
 ---
 
@@ -70,17 +72,18 @@ Yes — **you should record multiple clips for every digit (`0`–`9`)** (recomm
 * **Raw recordings:** `my_records/<your_name>/digit_<d>/<idx>_<d>.wav`
 * **Trimmed 80/20 split:** `my_train_records/digit_<d>/<your_name>_<idx>_<d>.wav` and `my_test_records/digit_<d>/<your_name>_<idx>_<d>.wav`
 * **Trained models:** `models/*.joblib` *(ignored by `.gitignore` so teammates don't hit binary merge conflicts — everyone retrains locally after pulling).*
+* **Original shared dataset (do not edit as part of enrollment):** `records/`, `processed_train_records/`, `processed_test_records/`. These are tracked in the repository and are only used as a fallback for training (see Section 4).
 
 Because every recording is stored under your own `<your_name>` folder/prefix, multiple teammates can record on separate laptops without filename collisions or merge conflicts.
 
 ### How to Sync Recordings to `main`
 1. Clone the repository, set up `.venv` (Section 1), and launch the Web UI (Section 2).
 2. In **Tab 2 (Record Voice)**, enter your name (e.g., `vanshika`, `shreya`, or `kusum`) and record **5–10 clips per digit**.
-3. Commit and push **only your audio recordings**:
+3. Commit and push **only your audio recordings**. Commit first, then rebase onto `main`, so the rebase is not blocked by uncommitted work:
    ```powershell
-   git pull --rebase origin main
    git add my_records my_train_records my_test_records
    git commit -m "Add voice recordings for <your_name>"
+   git pull --rebase origin main
    git push origin main
    ```
    *(Or push to your own branch and open a Pull Request into `main`.)*
@@ -108,6 +111,7 @@ Because every recording is stored under your own `<your_name>` folder/prefix, mu
   ```powershell
   git add my_records my_train_records my_test_records
   git commit -m "Add voice recordings for <your_name>"
+  git pull --rebase origin main
   git push origin main
   ```
 * **Undo uncommitted changes to a file if needed:**
@@ -120,5 +124,7 @@ Because every recording is stored under your own `<your_name>` folder/prefix, mu
 
 ## 7. Quick Troubleshooting
 * **Mic permission blocked:** Make sure you open `http://127.0.0.1:8000` or `http://localhost:8000` (not `0.0.0.0` or a LAN IP over plain HTTP).
-* **"Too long — pause between digits":** Speak one digit at a time and leave ~0.5s of silence between digits.
+* **"Too long (X s) — please pause between digits." (Tab 1, unlock):** Speak one digit at a time and leave ~0.5s of silence between digits.
+* **"Clip too long (X s) — speak only one digit." (Tab 2, recording):** Each clip should contain a single digit. Stop, then record again.
+* **"Too quiet or too short — please speak clearly and try again." (Tab 2, recording):** Move closer to the microphone, speak louder, and wait for the 0.5s noise calibration to finish before speaking.
 * **Live demo with a new guest:** Anyone can enter their name in **Tab 2**, record a few clips, click **Train All Models Now** in **Tab 3**, and test immediately in **Tab 1**.
