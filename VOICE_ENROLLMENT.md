@@ -90,6 +90,32 @@ Because every recording is stored under your own `<your_name>` folder/prefix, mu
    ```
    Then open **Tab 3 (Train Models)** and click **Train All Models Now** (check **Use CMVN** if teammates recorded on different microphones). Your local `models/` folder will now be trained on everyone's combined voices!
 
+### Basic Git Commands Quick Reference (For Teammates & AI Agents)
+* **First-time clone:**
+  ```powershell
+  git clone https://github.com/svanshika-afk/SPR_Project_SEM5.git
+  cd SPR_Project_SEM5
+  ```
+* **Check what changed (verify `.venv/` and `models/*.joblib` are ignored):**
+  ```powershell
+  git status
+  ```
+* **Get latest recordings/code from `main` before starting work:**
+  ```powershell
+  git pull --rebase origin main
+  ```
+* **Stage, commit, and push only your voice recordings:**
+  ```powershell
+  git add my_records my_train_records my_test_records
+  git commit -m "Add voice recordings for <your_name>"
+  git push origin main
+  ```
+* **Undo uncommitted changes to a file if needed:**
+  ```powershell
+  git checkout -- <file_path>
+  ```
+* **Rule for AI agents:** Never force-push (`git push --force`) to `main`, never commit `.venv/` or `models/*.joblib`, and always `git pull --rebase origin main` before pushing new recordings.
+
 ---
 
 ## 7. Quick Troubleshooting
