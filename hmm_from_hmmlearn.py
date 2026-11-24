@@ -1,85 +1,57 @@
 # -*- coding: utf-8 -*-
-from utils import *
+import numpy as np
 from hmmlearn import hmm
+from utils import mfcc, get_mfcc_sequences, get_test_files, save_models
 
 
-def train_model_hmm(train_dir):
-    """
-    :param train_dir: derivative order, default order is 2
-    :return: hmm_models
-    """
+def train_model_hmm(train_dir, n_components=4, n_iter=1800, cmvn=True):
+    """Train one hmmlearn GaussianHMM per digit 0..9 with proper sequence lengths."""
+    sequences = get_mfcc_sequences(train_dir, cmvn=cmvn)
     hmm_models = []
-    # iterate through the training directory
-    for digit in os.listdir(train_dir):
-        # get the directory of digit
-        digit_dir = os.path.join(train_dir, digit)
-        # get the digit label
-        label = digit_dir[digit_dir.rfind('/') + 1:]
-        # start training
-        X = np.array([])
-        train_files = [x for x in os.listdir(digit_dir) if x.endswith('.wav')]
-        for file_name in train_files:
-            file_path = os.path.join(digit_dir, file_name)
-            # get mfcc feature and ignore the warning
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                features_mfcc = mfcc(file_path)
-            # append mfcc to X
-            if len(X) == 0:
-                X = features_mfcc
-            else:
-                X = np.append(X, features_mfcc, axis=0)
-
-        # get the hmm model
-        model = hmm.GaussianHMM(n_components=4, covariance_type='diag', n_iter=1800)
-        # fit hmm model
+    for digit in range(10):
+        seqs = sequences[digit]
+        X = np.vstack(seqs)
+        lengths = [len(s) for s in seqs]
+        model = hmm.GaussianHMM(
+            n_components=n_components,
+            covariance_type='diag',
+            n_iter=n_iter,
+            random_state=0,
+        )
         np.seterr(all='ignore')
-        model.fit(X)
-        hmm_models.append((model, label))
+        model.fit(X, lengths=lengths)
+        hmm_models.append((model, str(digit)))
     return hmm_models
 
 
-def predict_hmm(hmm_models, test_files):
+def predict_from_features(hmm_models, features_mfcc):
     """
-    :param hmm_models: trained hmm models
-    :param test_files: test files
+    Predict digit from an MFCC feature matrix.
+    :return: (predicted_digit_int, margin_over_second_best, scores_array)
     """
+    scores = np.array([model.score(features_mfcc) for model, _ in hmm_models])
+    sorted_idx = np.argsort(scores)[::-1]
+    best = int(sorted_idx[0])
+    margin = float(scores[best] - scores[sorted_idx[1]])
+    return best, margin, scores
+
+
+def predict_hmm(hmm_models, test_dir, cmvn=True):
+    """Evaluate trained hmmlearn GaussianHMM models on test_dir."""
     count = 0
     pred_true = 0
-    for test_file in test_files:
-        # get mfcc feature and ignore the warning
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            features_mfcc = mfcc(test_file)
-        # calculate the score and get the maximum score
-        max_score = -float('inf')
-        predicted_label = ""
-        for item in hmm_models:
-            model, label = item
-            score = model.score(features_mfcc)
-            if score > max_score:
-                max_score = score
-                predicted_label = label
-
-        # determine if the prediction is correct
+    for test_file, ground_truth in get_test_files(test_dir):
+        features_mfcc = mfcc(test_file, cmvn=cmvn)
+        pred, _, _ = predict_from_features(hmm_models, features_mfcc)
         count += 1
-        if os.path.splitext(test_file)[0][-1] == predicted_label[-1]:
+        if pred == ground_truth:
             pred_true += 1
     print("---------- HMM (GaussianHMM) ----------")
-    print("Train num: 160, Test num: %d, Predict true num: %d"%(count, pred_true))
-    print("Accuracy: %.2f"%(pred_true / count))
+    print(f"Train num: 160, Test num: {count}, Predict true num: {pred_true}")
+    print(f"Accuracy: {pred_true / count:.2f}")
 
 
 if __name__ == '__main__':
-    # train the model
     hmm_models = train_model_hmm("./processed_train_records")
-
-    # append all test records and start digit recognition
-    test_files = []
-    for root, dirs, files in os.walk("./processed_test_records"):
-        for file in files:
-            # Make sure the suffix is correct and avoid the influence of hidden files
-            if os.path.splitext(file)[1] == '.wav':
-                test_files.append(os.path.join(root, file))
-    predict_hmm(hmm_models, test_files)
-
+    save_models(hmm_models, "./models/hmm_hmmlearn.joblib")
+    predict_hmm(hmm_models, "./processed_test_records")

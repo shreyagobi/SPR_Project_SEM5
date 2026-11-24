@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPR Voice-PIN Security Demo</title>
+  <style>
+    :root {
+      --bg: #0f172a; --card: #1e293b; --border: #334155;
+      --text: #f8fafc; --muted: #94a3b8; --accent: #3b82f6;
+      --green: #10b981; --red: #ef4444; --amber: #f59e0b;
+    }
+    * { box-sizing: border-box; font-family: "Segoe UI", system-ui, sans-serif; }
+    body { margin: 0; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 28px 16px; }
+    .container { width: 100%; max-width: 680px; }
+    h1 { margin: 0 0 4px; font-size: 1.55rem; }
+    .subtitle { color: var(--muted); margin: 0 0 18px; font-size: 0.92rem; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab-btn {
+      flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--card); color: var(--muted); font-weight: 600; cursor: pointer;
+    }
+    .tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .panel { display: none; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .panel.active { display: block; }
+    .banner {
+      text-align: center; padding: 12px; border-radius: 8px; font-weight: 700; font-size: 1.05rem;
+      margin-bottom: 16px; letter-spacing: 0.5px;
+    }
+    .banner.locked { background: rgba(239, 68, 68, 0.16); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); }
+    .banner.unlocked { background: rgba(16, 185, 129, 0.16); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .banner.warn { background: rgba(245, 158, 11, 0.18); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .pin-box {
+      background: #0f172a; border: 1px solid var(--border); border-radius: 10px;
+      text-align: center; padding: 18px; font-family: Consolas, monospace;
+      font-size: 2.2rem; letter-spacing: 14px; color: #60a5fa; margin-bottom: 14px;
+    }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    button {
+      border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer;
+      background: #334155; color: var(--text); font-size: 0.92rem;
+    }
+    button.primary { background: var(--accent); color: white; }
+    button.danger { background: var(--red); color: white; }
+    button.success { background: var(--green); color: #052e16; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input, select {
+      background: #0f172a; border: 1px solid var(--border); color: var(--text);
+      padding: 8px 10px; border-radius: 6px; font-size: 0.92rem;
+    }
+    .meter-wrap { background: #0f172a; border-radius: 6px; height: 12px; overflow: hidden; margin: 6px 0 12px; border: 1px solid var(--border); }
+    .meter-bar { height: 100%; width: 0%; background: var(--green); transition: width 40ms linear; }
+    .log {
+      background: #0f172a; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; font-size: 0.88rem; color: #cbd5e1; min-height: 44px;
+    }
+    .digit-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 12px 0; }
+    .digit-tile {
+      background: #0f172a; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 6px; text-align: center; cursor: pointer;
+    }
+    .digit-tile.selected { border-color: var(--accent); background: rgba(59, 130, 246, 0.15); }
+    .digit-tile .num { font-size: 1.25rem; font-weight: 700; display: block; }
+    .digit-tile .cnt { font-size: 0.78rem; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Voice-PIN Security Demo</h1>
+  <p class="subtitle">Spoken-digit recognition (DTW / GMM / HMM) + GMM-UBM speaker verification</p>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('unlock')">1. Unlock Demo</button>
+    <button class="tab-btn" onclick="switchTab('enroll')">2. Record Voice</button>
+    <button class="tab-btn" onclick="switchTab('train')">3. Train Models</button>
+  </div>
+
+  <!-- UNLOCK TAB -->
+  <div id="tab-unlock" class="panel active">
+    <div id="status-banner" class="banner locked">LOCKED</div>
+    <div id="pin-display" class="pin-box">_ _ _ _</div>
+
+    <div class="row">
+      <button id="listen-btn" class="primary" style="flex:1" onclick="toggleListening()">Start Listening</button>
+      <button onclick="backspacePin()">Backspace</button>
+      <button onclick="clearAndLock()">Clear / Lock</button>
+    </div>
+
+    <div style="font-size:0.82rem; color:var(--muted)">Mic Level</div>
+    <div class="meter-wrap"><div id="unlock-meter" class="meter-bar"></div></div>
+    <div id="unlock-log" class="log">Click "Start Listening" to calibrate room noise and speak digits 0–9.</div>
+
+    <hr style="border:0; border-top:1px solid var(--border); margin:16px 0" />
+    <div class="row">
+      <label>Model: <select id="model-select"></select></label>
+      <label>Target PIN: <input id="target-pin-input" value="1234" maxlength="8" style="width:90px" /></label>
+      <button onclick="setTargetPin()">Set PIN</button>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="reject-unclear" checked /> Reject unclear / non-digits</label>
+      <label><input type="checkbox" id="verify-speaker" /> Require owner voice (GMM-UBM 2FA)</label>
+      <span id="owner-badge" style="font-size:0.82rem; color:var(--muted)"></span>
+    </div>
+  </div>
+
+  <!-- ENROLL TAB -->
+  <div id="tab-enroll" class="panel">
+    <div class="row">
+      <label>Your Name: <input id="speaker-name" value="owner" style="width:140px" /></label>
+      <label><input type="checkbox" id="auto-advance" checked /> Auto-advance 0 → 9</label>
+      <button class="danger" onclick="clearSpeaker()">Reset Speaker Clips</button>
+    </div>
+
+    <div class="digit-grid" id="digit-grid"></div>
+
+    <div class="row">
+      <button id="enroll-btn" class="primary" style="flex:1" onclick="toggleEnrollRecording()">Record Digit (Auto-Save)</button>
+    </div>
+    <div style="font-size:0.82rem; color:var(--muted)">Mic Level</div>
+    <div class="meter-wrap"><div id="enroll-meter" class="meter-bar"></div></div>
+    <div id="enroll-log" class="log">Select a digit (or use Auto-advance), click Record, speak the digit, and it saves automatically.</div>
+  </div>
+
+  <!-- TRAIN TAB -->
+  <div id="tab-train" class="panel">
+    <div class="row">
+      <label>Owner for 2FA (GMM-UBM):
+        <select id="owner-select"><option value="">None (digit recognition only)</option></select>
+      </label>
+      <label><input type="checkbox" id="train-cmvn" /> Use CMVN (for multi-mic)</label>
+    </div>
+    <div class="row">
+      <button id="train-btn" class="success" onclick="trainModels()">Train All Models Now</button>
+    </div>
+    <div id="train-log" class="log">Click "Train All Models Now" after recording your voice clips.</div>
+    <table id="metrics-table" style="display:none">
+      <thead><tr><th>Model</th><th>Test Accuracy</th><th>Correct / Total</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let audioCtx = null, micStream = null, workletNode = null;
+let mode = null; // "unlock" | "enroll"
+let vadState = null;
+
+let targetPin = "1234";
+let enteredPin = "";
+let speakerVotes = [];
+let selectedDigit = 0;
+let enrolledData = {};
+
+function switchTab(name) {
+  if (mode !== null) stopMic();
+  document.querySelectorAll(".tab-btn").forEach((b, i) => {
+    const ids = ["unlock", "enroll", "train"];
+    b.classList.toggle("active", ids[i] === name);
+  });
+  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+  document.getElementById("tab-" + name).classList.add("active");
+  refreshStatus();
+}
+
+async function refreshStatus() {
+  const res = await fetch("/api/status");
+  const data = await res.json();
+  enrolledData = data.enrolled || {};
+
+  const sel = document.getElementById("model-select");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  (data.models.length ? data.models : ["No models — train first"]).forEach(m => {
+    const opt = document.createElement("option");
+    opt.value = m; opt.textContent = m;
+    sel.appendChild(opt);
+  });
+  if (prev && data.models.includes(prev)) sel.value = prev;
+
+  const ownerBadge = document.getElementById("owner-badge");
+  const verifyChk = document.getElementById("verify-speaker");
+  if (data.speaker_owner) {
+    ownerBadge.textContent = `(Enrolled owner: ${data.speaker_owner})`;
+    verifyChk.disabled = false;
+  } else {
+    ownerBadge.textContent = "(No owner trained yet)";
+    verifyChk.checked = false;
+    verifyChk.disabled = true;
+  }
+
+  const ownerSel = document.getElementById("owner-select");
+  const prevOwner = ownerSel.value;
+  ownerSel.innerHTML = '<option value="">None (digit recognition only)</option>';
+  Object.keys(enrolledData).forEach(spk => {
+    const opt = document.createElement("option");
+    opt.value = spk; opt.textContent = spk;
+    ownerSel.appendChild(opt);
+  });
+  if (prevOwner && enrolledData[prevOwner]) ownerSel.value = prevOwner;
+  else if (data.speaker_owner && enrolledData[data.speaker_owner]) ownerSel.value = data.speaker_owner;
+
+  renderDigitGrid();
+}
+
+function renderDigitGrid() {
+  const spk = document.getElementById("speaker-name").value.trim() || "owner";
+  const counts = enrolledData[spk] || {};
+  const grid = document.getElementById("digit-grid");
+  grid.innerHTML = "";
+  for (let d = 0; d < 10; d++) {
+    const tile = document.createElement("div");
+    tile.className = "digit-tile" + (d === selectedDigit ? " selected" : "");
+    tile.onclick = () => { selectedDigit = d; renderDigitGrid(); };
+    tile.innerHTML = `<span class="num">${d}</span><span class="cnt">${counts[String(d)] || 0} clips</span>`;
+    grid.appendChild(tile);
+  }
+}
+document.getElementById("speaker-name").addEventListener("input", renderDigitGrid);
+
+function encodeWav(samples, sampleRate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buf);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++, off += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([view], { type: "audio/wav" });
+}
+
+async function startMic(targetMode, meterId, logId) {
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+  });
+  audioCtx = new AudioContext();
+  await audioCtx.audioWorklet.addModule("/static/vad-processor.js");
+  const src = audioCtx.createMediaStreamSource(micStream);
+  workletNode = new AudioWorkletNode(audioCtx, "vad-processor");
+
+  const sr = audioCtx.sampleRate;
+  const preRollMax = Math.ceil(0.21 * sr);
+  const hangoverMax = Math.ceil(0.45 * sr);
+  const minSpeechSamples = Math.ceil(0.09 * sr);
+  const maxClipSamples = Math.ceil(1.6 * sr);
+  const calibTarget = Math.ceil(0.55 * sr);
+
+  vadState = {
+    calibrating: true, calibSamples: 0, calibRms: [],
+    noiseFloor: 0.01, onsetThresh: 0.025,
+    inSpeech: false, activeSamples: 0, silenceSamples: 0,
+    preRoll: [], speechChunks: [], speechLen: 0, sr
+  };
+
+  document.getElementById(logId).textContent = "Calibrating room noise (0.5s)... stay quiet.";
+
+  workletNode.port.onmessage = (ev) => {
+    const chunk = ev.data;
+    let sumSq = 0;
+    for (let i = 0; i < chunk.length; i++) sumSq += chunk[i] * chunk[i];
+    const rms = Math.sqrt(sumSq / chunk.length);
+    const pct = Math.min(100, (rms / 0.15) * 100);
+    document.getElementById(meterId).style.width = pct + "%";
+
+    if (vadState.calibrating) {
+      vadState.calibRms.push(rms);
+      vadState.calibSamples += chunk.length;
+      if (vadState.calibSamples >= calibTarget) {
+        vadState.calibRms.sort((a, b) => a - b);
+        const med = vadState.calibRms[Math.floor(vadState.calibRms.length / 2)] || 0.008;
+        vadState.noiseFloor = Math.max(0.004, med);
+        vadState.onsetThresh = Math.max(0.015, vadState.noiseFloor * 3.2);
+        vadState.calibrating = false;
+        document.getElementById(logId).textContent =
+          targetMode === "unlock" ? "Listening... speak a digit 0–9." : `Speak digit ${selectedDigit} now...`;
+      }
+      return;
+    }
+
+    if (!vadState.inSpeech) {
+      vadState.preRoll.push(chunk);
+      let preLen = vadState.preRoll.reduce((a, b) => a + b.length, 0);
+      while (preLen > preRollMax && vadState.preRoll.length > 1) {
+        preLen -= vadState.preRoll.shift().length;
+      }
+      if (rms > vadState.onsetThresh) {
+        vadState.activeSamples += chunk.length;
+        if (vadState.activeSamples >= minSpeechSamples) {
+          vadState.inSpeech = true;
+          vadState.speechChunks = [...vadState.preRoll];
+          vadState.speechLen = preLen;
+          vadState.silenceSamples = 0;
+          document.getElementById(logId).textContent = "Capturing speech...";
+        }
+      } else {
+        vadState.activeSamples = 0;
+      }
+    } else {
+      vadState.speechChunks.push(chunk);
+      vadState.speechLen += chunk.length;
+      if (rms > vadState.onsetThresh * 0.7) vadState.silenceSamples = 0;
+      else vadState.silenceSamples += chunk.length;
+
+      if (vadState.silenceSamples >= hangoverMax || vadState.speechLen >= maxClipSamples) {
+        const merged = mergeChunks(vadState.speechChunks, vadState.speechLen);
+        vadState.inSpeech = false;
+        vadState.activeSamples = 0;
+        vadState.silenceSamples = 0;
+        vadState.speechChunks = [];
+        vadState.speechLen = 0;
+        if (targetMode === "unlock") handleUnlockClip(merged, sr);
+        else handleEnrollClip(merged, sr);
+      }
+    }
+  };
+
+  src.connect(workletNode);
+  workletNode.connect(audioCtx.destination);
+  mode = targetMode;
+}
+
+function mergeChunks(chunks, totalLen) {
+  const out = new Float32Array(totalLen);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+function stopMic() {
+  // If user clicks Stop during enroll while speech was captured, auto-save it!
+  if (mode === "enroll" && vadState && vadState.inSpeech && vadState.speechLen > 0) {
+    const merged = mergeChunks(vadState.speechChunks, vadState.speechLen);
+    handleEnrollClip(merged, vadState.sr);
+  }
+  if (workletNode) { workletNode.disconnect(); workletNode = null; }
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  mode = null;
+  document.getElementById("listen-btn").textContent = "Start Listening";
+  document.getElementById("listen-btn").className = "primary";
+  document.getElementById("enroll-btn").textContent = "Record Digit (Auto-Save)";
+  document.getElementById("enroll-btn").className = "primary";
+  document.getElementById("unlock-meter").style.width = "0%";
+  document.getElementById("enroll-meter").style.width = "0%";
+}
+
+async function toggleListening() {
+  if (mode === "unlock") {
+    stopMic();
+    document.getElementById("unlock-log").textContent = "Paused listening.";
+    return;
+  }
+  if (mode !== null) stopMic();
+  document.getElementById("listen-btn").textContent = "Stop Listening";
+  document.getElementById("listen-btn").className = "danger";
+  await startMic("unlock", "unlock-meter", "unlock-log");
+}
+
+async function toggleEnrollRecording() {
+  if (mode === "enroll") {
+    stopMic();
+    return;
+  }
+  if (mode !== null) stopMic();
+  document.getElementById("enroll-btn").textContent = "Stop & Save";
+  document.getElementById("enroll-btn").className = "danger";
+  await startMic("enroll", "enroll-meter", "enroll-log");
+}
+
+async function handleUnlockClip(samples, sr) {
+  const blob = encodeWav(samples, sr);
+  const fd = new FormData();
+  fd.append("file", blob, "clip.wav");
+  fd.append("model", document.getElementById("model-select").value);
+  fd.append("reject_unclear", document.getElementById("reject-unclear").checked);
+  fd.append("verify_spk", document.getElementById("verify-speaker").checked);
+
+  const res = await fetch("/api/predict", { method: "POST", body: fd });
+  const data = await res.json();
+  const log = document.getElementById("unlock-log");
+
+  if (!data.accepted) {
+    log.textContent = data.reason || "Rejected.";
+    return;
+  }
+
+  enteredPin += String(data.digit);
+  if (document.getElementById("verify-speaker").checked) {
+    speakerVotes.push(data.speaker_ok);
+  }
+  renderPinDisplay();
+  let msg = `Detected: ${data.digit} (margin=${data.margin}, ${data.duration_sec}s)`;
+  if (document.getElementById("verify-speaker").checked) {
+    msg += ` | Voice LLR=${data.speaker_llr} (${data.speaker_ok ? "match" : "mismatch"})`;
+  }
+  log.textContent = msg;
+
+  if (enteredPin.length >= targetPin.length) {
+    const banner = document.getElementById("status-banner");
+    const pinOk = enteredPin === targetPin;
+    const spkRequired = document.getElementById("verify-speaker").checked;
+    const spkOk = !spkRequired || (speakerVotes.filter(Boolean).length >= Math.ceil(speakerVotes.length / 2));
+
+    if (pinOk && spkOk) {
+      banner.textContent = "UNLOCKED — ACCESS GRANTED";
+      banner.className = "banner unlocked";
+      stopMic();
+    } else if (pinOk && !spkOk) {
+      banner.textContent = "WRONG VOICE — ACCESS DENIED";
+      banner.className = "banner warn";
+      setTimeout(clearAndLock, 1600);
+    } else {
+      banner.textContent = "WRONG PIN — TRY AGAIN";
+      banner.className = "banner warn";
+      setTimeout(clearAndLock, 1500);
+    }
+  }
+}
+
+async function handleEnrollClip(samples, sr) {
+  const spk = document.getElementById("speaker-name").value.trim() || "owner";
+  const blob = encodeWav(samples, sr);
+  const fd = new FormData();
+  fd.append("file", blob, "enroll.wav");
+  fd.append("digit", selectedDigit);
+  fd.append("speaker", spk);
+
+  const res = await fetch("/api/enroll", { method: "POST", body: fd });
+  const data = await res.json();
+  const log = document.getElementById("enroll-log");
+
+  if (!data.saved) {
+    log.textContent = data.reason || "Clip rejected.";
+    return;
+  }
+
+  enrolledData = data.enrolled;
+  log.textContent = `Saved digit ${data.digit} for '${data.speaker}' (${data.duration_sec}s → ${data.split}).`;
+  if (document.getElementById("auto-advance").checked) {
+    selectedDigit = (selectedDigit + 1) % 10;
+  }
+  renderDigitGrid();
+  if (mode === "enroll") {
+    log.textContent += ` Speak digit ${selectedDigit} next (or click Stop).`;
+  }
+}
+
+async function clearSpeaker() {
+  const spk = document.getElementById("speaker-name").value.trim() || "owner";
+  await fetch("/api/enroll/" + encodeURIComponent(spk), { method: "DELETE" });
+  await refreshStatus();
+  document.getElementById("enroll-log").textContent = `Cleared recordings for '${spk}'.`;
+}
+
+async function trainModels() {
+  const btn = document.getElementById("train-btn");
+  const log = document.getElementById("train-log");
+  btn.disabled = true;
+  log.textContent = "Training DTW, GMM, HMM, and Speaker Verifier... please wait.";
+  try {
+    const res = await fetch("/api/train", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cmvn: document.getElementById("train-cmvn").checked,
+        owner: document.getElementById("owner-select").value || null
+      })
+    });
+    const data = await res.json();
+    const tbl = document.getElementById("metrics-table");
+    const tbody = tbl.querySelector("tbody");
+    tbody.innerHTML = "";
+    (data.metrics || []).forEach(m => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${m.model}</td><td>${(m.accuracy * 100).toFixed(1)}%</td><td>${m.correct} / ${m.total}</td>`;
+      tbody.appendChild(tr);
+    });
+    tbl.style.display = "table";
+    log.textContent = `Training complete on ${data.train_dir}` +
+      (data.speaker_owner ? ` | Speaker 2FA trained for '${data.speaker_owner}'.` : ".");
+    await refreshStatus();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderPinDisplay() {
+  const slots = [];
+  for (let i = 0; i < targetPin.length; i++) slots.push(i < enteredPin.length ? enteredPin[i] : "_");
+  document.getElementById("pin-display").textContent = slots.join(" ");
+}
+
+function backspacePin() {
+  if (enteredPin.length > 0) {
+    enteredPin = enteredPin.slice(0, -1);
+    speakerVotes.pop();
+    renderPinDisplay();
+    document.getElementById("status-banner").textContent = "LOCKED";
+    document.getElementById("status-banner").className = "banner locked";
+  }
+}
+
+function clearAndLock() {
+  enteredPin = "";
+  speakerVotes = [];
+  renderPinDisplay();
+  document.getElementById("status-banner").textContent = "LOCKED";
+  document.getElementById("status-banner").className = "banner locked";
+}
+
+function setTargetPin() {
+  const val = document.getElementById("target-pin-input").value.trim();
+  if (!/^\d{1,8}$/.test(val)) {
+    alert("PIN must be 1 to 8 digits (0-9).");
+    return;
+  }
+  targetPin = val;
+  clearAndLock();
+  document.getElementById("unlock-log").textContent = `Target PIN set (${targetPin.length} digits).`;
+}
+
+refreshStatus();
+renderPinDisplay();
+</script>
+</body>
+</html>
