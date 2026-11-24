@@ -24,6 +24,3 @@ Open **[http://127.0.0.1:8000](http://127.0.0.1:8000)** in your browser.
 
 ## Recording, Training & Team Workflow
 See **[VOICE_ENROLLMENT.md](VOICE_ENROLLMENT.md)** for full instructions on recording your voice, retraining models, and syncing recordings across teammates.
-
----
-*Adapted from [Sherry-XLL/Digital-Recognition-DTW_HMM_GMM](https://github.com/Sherry-XLL/Digital-Recognition-DTW_HMM_GMM).*
