@@ -41,12 +41,22 @@ Yes — **you should record multiple clips for every digit (`0`–`9`)** (recomm
    * Raw clips are saved to `my_records/<your_name>/digit_<d>/`, and trimmed clips are automatically split **80% train / 20% test** into `my_train_records/` and `my_test_records/`.
    * **Multiple teammates & adding more later:** Existing recordings are never overwritten—new clips are appended with the next index, so you or your teammates can add more clips for any digit at any time.
 
+**Option C — Command-line recorder (`record_voice.py`, optional):** You can also record from the terminal. It asks for Enter before each clip, `s` skips the digit, and `q` quits.
+
+```powershell
+.venv\Scripts\python.exe record_voice.py --count 10
+```
+
+* It does **not** ask for a name. Clips are saved to `my_records/digit_<d>/` with no speaker folder, so training treats them as the speaker `default`.
+* Use the Web UI for team recordings, because it tags every clip with the speaker's name. Clips from `record_voice.py` cannot be selected with `--owner` or **Owner for 2FA**.
+* Do not mix the two layouts in `my_records/`. If there are `digit_*` folders at the root, the trainer ignores every speaker folder, so Web UI recordings are silently left out. Keep `record_voice.py` clips in a separate folder (for example, `--raw-dir ./my_records_cli`) if you use both.
+
 ---
 
 ## 4. How to Retrain (Tab 3: **Train Models**)
 
 1. Open the **3. Train Models** tab.
-2. *(Optional)* Select an **Owner for 2FA (GMM-UBM)** if you want the app to verify *who* is speaking in addition to the PIN digits.
+2. *(Optional)* Select an **Owner for 2FA (GMM-UBM)** if you want the app to verify *who* is speaking in addition to the PIN digits. The list only shows speakers who have their own folder in `my_records/` (recorded through the Web UI). If the list is empty, record clips in Tab 2 first.
 3. *(Optional)* Check **Use CMVN** if teammates recorded on different microphones or at very different volumes.
 4. Click **Train All Models Now**.
    * All 5 digit models (`HMM (hmmlearn)`, `GMM (custom)`, `GMM (sklearn)`, `HMM (custom)`, `DTW (multi-template)`), per-digit rejection thresholds, and the optional GMM-UBM speaker verifier are saved to `./models/`, and test accuracy is displayed in the table.
@@ -125,6 +135,7 @@ Because every recording is stored under your own `<your_name>` folder/prefix, mu
 ## 7. Quick Troubleshooting
 * **Mic permission blocked:** Make sure you open `http://127.0.0.1:8000` or `http://localhost:8000` (not `0.0.0.0` or a LAN IP over plain HTTP).
 * **"Too long (X s) — please pause between digits." (Tab 1, unlock):** Speak one digit at a time and leave ~0.5s of silence between digits.
+* **Owner for 2FA is missing or the owner check always fails:** The owner must have recorded clips through the Web UI (Tab 2) so that `my_records/<your_name>/` exists, and then trained again in Tab 3. A `digit_*` folder directly inside `my_records/` (from `record_voice.py`) can hide speaker folders; see Section 3, Option C.
 * **"Clip too long (X s) — speak only one digit." (Tab 2, recording):** Each clip should contain a single digit. Stop, then record again.
 * **"Too quiet or too short — please speak clearly and try again." (Tab 2, recording):** Move closer to the microphone, speak louder, and wait for the 0.5s noise calibration to finish before speaking.
 * **Live demo with a new guest:** Anyone can enter their name in **Tab 2**, record a few clips, click **Train All Models Now** in **Tab 3**, and test immediately in **Tab 1**.
